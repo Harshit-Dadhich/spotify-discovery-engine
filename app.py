@@ -1,6 +1,5 @@
 import streamlit as st
 from google_play_scraper import reviews, Sort
-import anthropic
 import google.generativeai as genai
 import pandas as pd
 
@@ -22,35 +21,26 @@ with st.sidebar:
     count = st.slider("Number of reviews to scrape", 50, 500, 150, step=50)
     sort_choice = st.selectbox("Sort reviews by", ["Newest", "Most Relevant"])
 
-    provider = st.radio(
-        "AI Provider",
-        ["Gemini (free)", "Claude"],
-        help="Gemini's API has a free tier with no credit card needed. Claude requires paid credits."
-    )
-
-    def get_default_key(provider_name):
+    def get_default_key():
         try:
-            if provider_name == "Gemini (free)":
-                return st.secrets.get("GEMINI_API_KEY", "")
-            else:
-                return st.secrets.get("ANTHROPIC_API_KEY", "")
+            return st.secrets.get("GEMINI_API_KEY", "")
         except Exception:
             return ""
 
-    default_key = get_default_key(provider)
+    default_key = get_default_key()
 
     if default_key:
         api_key = default_key
         st.success("✅ Using built-in API key — no setup needed.")
         with st.expander("Use your own key instead"):
-            override = st.text_input("Your API key", type="password")
+            override = st.text_input("Your Gemini API key", type="password")
             if override:
                 api_key = override
     else:
         api_key = st.text_input(
-            f"{'Gemini' if provider == 'Gemini (free)' else 'Claude'} API Key",
+            "Gemini API Key",
             type="password",
-            help="Get a free key (no card required) at aistudio.google.com/apikey" if provider == "Gemini (free)" else "Your Anthropic API key."
+            help="Get a free key (no card required) at aistudio.google.com/apikey"
         )
 
     run = st.button("🔍 Scrape & Analyze", type="primary", use_container_width=True)
@@ -62,12 +52,24 @@ ANALYSIS_QUESTIONS = """1. Why do users struggle to discover new music? (root ca
 5. Which user segments (identify 2-4 distinct ones) experience different discovery challenges, and how do their challenges differ?
 6. What unmet needs emerge consistently across these reviews?"""
 
+@st.dialog("Something went wrong")
+def show_error_dialog(message="We couldn't complete that request. Please try again in a moment."):
+    st.write(message)
+    if st.button("OK", type="primary", use_container_width=True):
+        st.rerun()
+
+@st.dialog("Missing information")
+def show_missing_input_dialog(message):
+    st.write(message)
+    if st.button("OK", type="primary", use_container_width=True):
+        st.rerun()
+
 if run:
     if not api_key:
-        st.error("⚠️ Please enter your API key in the sidebar to run the analysis.")
+        show_missing_input_dialog("Please add an API key in the sidebar before running the analysis.")
         st.stop()
     if not app_id:
-        st.error("⚠️ Please enter a Play Store App ID.")
+        show_missing_input_dialog("Please enter a Play Store App ID.")
         st.stop()
 
     sort_map = {"Newest": Sort.NEWEST, "Most Relevant": Sort.MOST_RELEVANT}
@@ -81,8 +83,8 @@ if run:
                 sort=sort_map[sort_choice],
                 count=count,
             )
-        except Exception as e:
-            st.error(f"Scraping failed — check the App ID is correct. Error: {e}")
+        except Exception:
+            show_error_dialog("We couldn't fetch reviews for that app right now. Double-check the App ID and try again.")
             st.stop()
 
     if not result:
@@ -112,23 +114,14 @@ REVIEWS:
 {review_corpus}
 """
 
-    with st.spinner(f"🧠 {provider.split(' ')[0]} is analyzing the reviews for discovery-related themes..."):
+    with st.spinner("🧠 Gemini is analyzing the reviews for discovery-related themes..."):
         try:
-            if provider == "Gemini (free)":
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel("gemini-2.5-flash")
-                response = model.generate_content(prompt)
-                analysis = response.text
-            else:
-                client = anthropic.Anthropic(api_key=api_key)
-                msg = client.messages.create(
-                    model="claude-sonnet-4-5",
-                    max_tokens=3000,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-                analysis = msg.content[0].text
-        except Exception as e:
-            st.error(f"Analysis failed: {e}")
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel("gemini-2.5-flash")
+            response = model.generate_content(prompt)
+            analysis = response.text
+        except Exception:
+            show_error_dialog()
             st.stop()
 
     st.subheader("🧠 AI-Generated Discovery Insights")
@@ -141,12 +134,12 @@ REVIEWS:
     )
 
 else:
-    st.info("👈 Choose a provider and click **Scrape & Analyze** to run the live workflow.")
+    st.info("👈 Click **Scrape & Analyze** to run the live workflow.")
     st.markdown("""
 ### How this workflow works
 1. **Point** — Give it any Play Store app ID (defaults to Spotify's `com.spotify.music`).
 2. **Scrape** — It pulls real, live reviews directly from the Google Play Store. No manual copy-paste, no static dataset — re-run it any time for fresh data.
-3. **Analyze** — The scraped reviews are sent to an AI model (Gemini or Claude), which extracts discovery-related themes,
+3. **Analyze** — The scraped reviews are sent to Gemini, which extracts discovery-related themes,
    frustrations, user segments, and unmet needs — grounded in actual review language.
 4. **Repeatable** — Point it at a competitor app, or re-run later to track how sentiment shifts over time.
 

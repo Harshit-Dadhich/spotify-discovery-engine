@@ -1,13 +1,14 @@
 import streamlit as st
 from google_play_scraper import reviews, Sort
 import anthropic
+import google.generativeai as genai
 import pandas as pd
 
 st.set_page_config(page_title="AI Review Discovery Engine", page_icon="🎧", layout="wide")
 
 st.title("🎧 AI-Powered Review Discovery Engine")
 st.caption(
-    "Point this at any Play Store app → it scrapes live reviews → Claude analyzes them "
+    "Point this at any Play Store app → it scrapes live reviews → AI analyzes them "
     "for music-discovery insights, automatically. Built to study Spotify's discovery problem."
 )
 
@@ -20,11 +21,26 @@ with st.sidebar:
     )
     count = st.slider("Number of reviews to scrape", 50, 500, 150, step=50)
     sort_choice = st.selectbox("Sort reviews by", ["Newest", "Most Relevant"])
-    api_key = st.text_input(
-        "Claude API Key",
-        type="password",
-        help="Your Anthropic API key — used only for this session, never stored or logged."
+
+    provider = st.radio(
+        "AI Provider",
+        ["Gemini (free)", "Claude"],
+        help="Gemini's API has a free tier with no credit card needed. Claude requires paid credits."
     )
+
+    if provider == "Gemini (free)":
+        api_key = st.text_input(
+            "Gemini API Key",
+            type="password",
+            help="Get a free key (no card required) at aistudio.google.com/apikey"
+        )
+    else:
+        api_key = st.text_input(
+            "Claude API Key",
+            type="password",
+            help="Your Anthropic API key — used only for this session, never stored or logged."
+        )
+
     run = st.button("🔍 Scrape & Analyze", type="primary", use_container_width=True)
 
 ANALYSIS_QUESTIONS = """1. Why do users struggle to discover new music? (root causes, not symptoms)
@@ -36,7 +52,7 @@ ANALYSIS_QUESTIONS = """1. Why do users struggle to discover new music? (root ca
 
 if run:
     if not api_key:
-        st.error("⚠️ Please enter your Claude API key in the sidebar to run the analysis.")
+        st.error("⚠️ Please enter your API key in the sidebar to run the analysis.")
         st.stop()
     if not app_id:
         st.error("⚠️ Please enter a Play Store App ID.")
@@ -84,18 +100,23 @@ REVIEWS:
 {review_corpus}
 """
 
-    client = anthropic.Anthropic(api_key=api_key)
-
-    with st.spinner("🧠 Claude is analyzing the reviews for discovery-related themes..."):
+    with st.spinner(f"🧠 {provider.split(' ')[0]} is analyzing the reviews for discovery-related themes..."):
         try:
-            msg = client.messages.create(
-                model="claude-sonnet-4-5",
-                max_tokens=3000,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            analysis = msg.content[0].text
+            if provider == "Gemini (free)":
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel("gemini-2.5-flash")
+                response = model.generate_content(prompt)
+                analysis = response.text
+            else:
+                client = anthropic.Anthropic(api_key=api_key)
+                msg = client.messages.create(
+                    model="claude-sonnet-4-5",
+                    max_tokens=3000,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                analysis = msg.content[0].text
         except Exception as e:
-            st.error(f"Claude analysis failed: {e}")
+            st.error(f"Analysis failed: {e}")
             st.stop()
 
     st.subheader("🧠 AI-Generated Discovery Insights")
@@ -108,12 +129,12 @@ REVIEWS:
     )
 
 else:
-    st.info("👈 Enter your Claude API key in the sidebar and click **Scrape & Analyze** to run the live workflow.")
+    st.info("👈 Choose a provider, enter your API key in the sidebar, and click **Scrape & Analyze** to run the live workflow.")
     st.markdown("""
 ### How this workflow works
 1. **Point** — Give it any Play Store app ID (defaults to Spotify's `com.spotify.music`).
 2. **Scrape** — It pulls real, live reviews directly from the Google Play Store. No manual copy-paste, no static dataset — re-run it any time for fresh data.
-3. **Analyze** — The scraped reviews are sent to Claude, which extracts discovery-related themes,
+3. **Analyze** — The scraped reviews are sent to an AI model (Gemini or Claude), which extracts discovery-related themes,
    frustrations, user segments, and unmet needs — grounded in actual review language.
 4. **Repeatable** — Point it at a competitor app, or re-run later to track how sentiment shifts over time.
 

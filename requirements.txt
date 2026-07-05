@@ -1,4 +1,5 @@
 streamlit
 google-play-scraper
 anthropic
+google-generativeai
 pandas

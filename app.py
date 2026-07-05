@@ -28,17 +28,29 @@ with st.sidebar:
         help="Gemini's API has a free tier with no credit card needed. Claude requires paid credits."
     )
 
-    if provider == "Gemini (free)":
-        api_key = st.text_input(
-            "Gemini API Key",
-            type="password",
-            help="Get a free key (no card required) at aistudio.google.com/apikey"
-        )
+    def get_default_key(provider_name):
+        try:
+            if provider_name == "Gemini (free)":
+                return st.secrets.get("GEMINI_API_KEY", "")
+            else:
+                return st.secrets.get("ANTHROPIC_API_KEY", "")
+        except Exception:
+            return ""
+
+    default_key = get_default_key(provider)
+
+    if default_key:
+        api_key = default_key
+        st.success("✅ Using built-in API key — no setup needed.")
+        with st.expander("Use your own key instead"):
+            override = st.text_input("Your API key", type="password")
+            if override:
+                api_key = override
     else:
         api_key = st.text_input(
-            "Claude API Key",
+            f"{'Gemini' if provider == 'Gemini (free)' else 'Claude'} API Key",
             type="password",
-            help="Your Anthropic API key — used only for this session, never stored or logged."
+            help="Get a free key (no card required) at aistudio.google.com/apikey" if provider == "Gemini (free)" else "Your Anthropic API key."
         )
 
     run = st.button("🔍 Scrape & Analyze", type="primary", use_container_width=True)
@@ -129,7 +141,7 @@ REVIEWS:
     )
 
 else:
-    st.info("👈 Choose a provider, enter your API key in the sidebar, and click **Scrape & Analyze** to run the live workflow.")
+    st.info("👈 Choose a provider and click **Scrape & Analyze** to run the live workflow.")
     st.markdown("""
 ### How this workflow works
 1. **Point** — Give it any Play Store app ID (defaults to Spotify's `com.spotify.music`).
